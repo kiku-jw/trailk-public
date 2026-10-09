@@ -1,0 +1,5 @@
+{
+  "blocked": true,
+  "reason": "Audio disabled by default; requires a new explicit user request",
+  "resume_requires_new_user_request": true
+}

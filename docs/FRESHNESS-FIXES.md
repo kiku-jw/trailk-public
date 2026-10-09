@@ -1,0 +1,15 @@
+# Trailk 1.3.3 (build 10): bounded freshness fixes
+
+Candidate fixes the reviewed 1.3.2 cases without new paid calls or capture permissions. The unchanged strict neutrality predicate now accepts one retained EN+RU pair. Plain personal assertions still fail; a qualifying question/request is a syntactic guard, not a proof of relevance or truth. Nothing is selected, sent or spoken automatically.
+
+Shared append-only segmentation accepts «Где?» and «Как?» and holds a digit-period at a delta boundary until continuation distinguishes a decimal. «Цена 3.» + «5 доллара.» remains one thought and one immutable caption row. A quiet fragment still settles after 1600ms, so a pause inside a decimal or self-correction may remain ambiguous; the API supplies no final-utterance event.
+
+One request remains inflight. After an obsolete success OR failure, the newest stabilized completed thought may replace it after 2 seconds from the last dispatch, within a maximum of two starts in a sliding 12-second window. Normal fresh results retain the 12-second interval; same context is not retried. Existing reservation-before-key/dispatch and exhaustion/Stop guards remain. This replacement can increase spending versus the previous one-start-per-12-second rule; each attempt remains bounded by the approved estimated reserve, which is not a guaranteed invoice ceiling.
+
+Synthetic controlled-clock regression (2000ms mock API): new question at 1500ms, old result discarded at 2750ms, replacement starts 2750ms, fresh result at 4750ms. New-question-to-result falls from 13.25s to 3.25s in this fixture only. «Где?» receives a mock result at 2750ms; split decimal has one segment and one dispatch. Negation, self-correction, adjacent small questions, inflight replacement, burst limit and obsolete rejection are covered. No translation-quality improvement is claimed.
+
+PCM frames carry a monotonic **local receiver-ready timestamp**, not a native audio/speech timestamp. Queue age >=600ms is visible as lagging. At >=2 seconds, feed or dequeue stops capture, explicitly discards the queued context, emits an error, preserves existing text and requires manual Start. It never silently resynchronizes or reconnects/replays audio. Fresh silence/order is preserved. An already uncertain send remains reserved; this guard cannot measure OS/native buffers, provider processing or retract an inflight frame. Expiry rollover stalls can now stop with this diagnosis rather than replay a long queue; real rollover remains unverified.
+
+Text still waits for completed provider JSON and successful terminal status. Early Responses streaming publication is deferred: the current EN+RU contract has no tested incremental path that proves complete paired meaning and handles later refusal/incomplete output. Partial JSON or unverified EN fragments are not displayed. The dedicated incoming translation WebSocket remains streaming.
+
+Historical account balances, spending authorizations and request-cost details are omitted from the public snapshot. Earlier test observations are historical; no live provider verification is claimed by this publication.

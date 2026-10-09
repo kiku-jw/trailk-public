@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';
+const css=readFileSync(new URL('../assets/web/style.css',import.meta.url),'utf8');
+const luminance=h=>{h=h.replace('#','');if(h.length===3)h=[...h].map(c=>c+c).join('');const rgb=[0,2,4].map(i=>parseInt(h.slice(i,i+2),16)/255).map(c=>c<=.04045?c/12.92:((c+.055)/1.055)**2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;};
+const contrast=(a,b)=>{a=luminance(a);b=luminance(b);return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);};
+for(const [name,selector] of [['light',':root{'],['dark',':root[data-theme=dark]{']])test(`${name} primary and secondary reading text meets WCAG AA contrast`,()=>{const block=css.slice(css.indexOf(selector)).split('}')[0];const colors=Object.fromEntries([...block.matchAll(/--(\w+):(#\w+)/g)].map(m=>[m[1],m[2]]));for(const [a,b] of [['text','bg'],['muted','bg'],['accent','bg'],['text','selected'],['warning','surface']])assert(contrast(colors[a],colors[b])>=4.5,`${a}/${b}: ${contrast(colors[a],colors[b])}`);});

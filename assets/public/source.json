@@ -1,0 +1,14 @@
+{
+  "speaker": "Leo Varadkar",
+  "date": "2017-06-14",
+  "author": "Leo Varadkar and Houses of the Oireachtas",
+  "source_page": "https://commons.wikimedia.org/wiki/File:Leo_Varadkar%27s_first_speech_as_Taoiseach_elect.opus",
+  "direct_file": "https://upload.wikimedia.org/wikipedia/commons/3/35/Leo_Varadkar%27s_first_speech_as_Taoiseach_elect.opus",
+  "license": "CC BY4.0",
+  "license_url": "https://creativecommons.org/licenses/by/4.0/",
+  "changes": "Source01:00\u201303:30, mono24kHz PCM16 little-endian",
+  "offset_seconds": 60,
+  "duration_seconds": 150,
+  "sha256": "051690f943df8f8d917731d7dbdcb0e76f4b7d9762681a79c867694531f16069",
+  "reference_status": "Local ASR anchors unreviewed; source audio is ground truth. No automatic translation score."
+}

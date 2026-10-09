@@ -1,0 +1,2 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {SessionClicks} from '../assets/web/session-control.js';
+test('one session control accepts deliberate start/stop, rejects repeated clicks',()=>{const gate=new SessionClicks();assert.equal(gate.accept(0),true);assert.equal(gate.accept(0),false);assert.equal(gate.accept(299),false);assert.equal(gate.accept(300),true);assert.equal(gate.accept(301),false);assert.equal(gate.accept(650),true);});

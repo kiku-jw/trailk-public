@@ -1,0 +1,7 @@
+{
+  "approved": false,
+  "provider": "openai",
+  "model": "gpt-5.4-mini-2026-03-17",
+  "budget_usd": 0.1,
+  "allow_selected_context": false
+}

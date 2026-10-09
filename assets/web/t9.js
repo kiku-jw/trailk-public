@@ -1,0 +1,33 @@
+import {sentencePrefix} from './segments.js';
+import {continuationReason} from './reply-readiness.js';
+// Conversation ledger and bounded scheduling. Remote text is observed translation,
+// never an invented own reply; a displayed/selected suggestion is not spoken evidence.
+export class ConversationLedger{
+ constructor(limit=2400,{onTrace=()=>{}}={}){this.limit=limit;this.onTrace=onTrace;this.items=[];this.revision=0;this.version=0;this.partial='';this.lastDelta=0;this.readyAt=0;this.stabilization=600;}
+ observe(text,now){if(text)this.version++;this.partial+=text;this.lastDelta=now;while(true){const full=sentencePrefix(this.partial);if(!full)break;this.partial=this.partial.slice(full.length);this.commit(full,now,'punctuation');}}
+ commit(text,now,reason='punctuation'){if(text.trim().length<2||!/[\p{L}]/u.test(text))return;this.readyAt=now;this.stabilization=reason==='quiet'?1600:600;this.items.push(Object.freeze({kind:'observed_remote_translation',speaker:'unknown',revision:this.revision+1,text:text.trim(),at:now}));while(this.items.length>30)this.items.shift();this.revision++;this.version++;this.onTrace('segment_complete',{revision:this.revision,characters:text.trim().length,reason,ready_at_ms:now,stabilization_ms:this.stabilization});}
+ settle(now){if(this.partial.trim().length>=2&&now-this.lastDelta>=1600){if(continuationReason(this.partial)){this.onTrace('segment_waiting',{reason:continuationReason(this.partial),characters:this.partial.length});return;}this.commit(this.partial,this.lastDelta,'quiet');this.partial='';}}
+ boundary(now){if(continuationReason(this.partial))return;this.commit(this.partial,now,'boundary');this.partial='';}
+ replyContext(){if(this.partial.trim())return null;const last=this.items.at(-1);if(!last)return null;const prior=[];let remaining=Math.min(800,2400-last.text.length);for(let i=this.items.length-2;i>=Math.max(0,this.items.length-3);i--){const item=this.items[i];if(item.text.length>remaining)break;prior.unshift(this.replySegment(item));remaining-=item.text.length;}return {version:1,latest_interlocutor_utterance:this.replySegment(last),prior_context:prior,own_response_state:{spoken:'unknown',selected_draft_is_speech:false}};}
+ replySegment(item){return {text:item.text,segment_revision:item.revision,source:'remote_translation',speaker:'unknown',finality:'app_segment_only'};}
+ context(){let text=this.items.slice(-6).map(i=>'Собеседники: '+i.text).join('\n');return text.slice(-this.limit);}
+}
+export class ReplyScheduler{
+ constructor({generate,onResult,onState=()=>{},onTrace=()=>{},clock=()=>performance.now(),debounce=600,minInterval=12000}){this.generate=generate;this.onResult=onResult;this.onState=onState;this.onTrace=onTrace;this.clock=clock;this.debounce=debounce;this.minInterval=minInterval;this.enabled=false;this.busy=false;this.remoteBusy=false;this.lastStarted=-Infinity;this.lastChange=0;this.context='';this.revision=0;this.attempted=new Set();this.cancelGeneration=0;this.paused=false;this.lastBlocked=null;this.superseded=false;this.dispatchTimes=[];}
+ configure(enabled,remoteBusy=false){if(!enabled&&this.enabled)this.cancel();this.enabled=enabled;this.remoteBusy=remoteBusy;}
+ update(context,revision,paused,changedAt=this.clock()){if(context!==this.context||revision!==this.revision){if(context!==this.context&&this.attempted.has(this.context))this.superseded=true;this.context=context;this.revision=revision;this.lastChange=changedAt;this.onTrace('context_updated',{revision,changed_at_ms:changedAt,characters:context.length});this.onState('stale');}this.paused=paused;}
+ reset(){this.cancel();this.attempted.clear();this.context='';this.revision=0;this.lastStarted=-Infinity;this.lastBlocked=null;this.superseded=false;this.dispatchTimes=[];}
+ cancel(){this.cancelGeneration++;this.enabled=false;this.onTrace('cancel_display',{revision:this.revision});this.onState('stopped');}
+ async tick(){const now=this.clock(),context=this.context;this.dispatchTimes=this.dispatchTimes.filter(t=>now-t<this.minInterval);const replacement=this.superseded&&now-this.lastStarted>=2000&&this.dispatchTimes.length<2;const reason=!this.enabled?'disabled':this.busy?'inflight':this.remoteBusy?'other_text_busy':context.trim().length<2?'no_completed_segment':!this.paused?'segment_stabilization':now-this.lastChange<this.debounce?'debounce':now-this.lastStarted<this.minInterval&&!replacement?'rate_limit':this.attempted.has(context)?'already_attempted':null;
+  if(reason){if(reason!==this.lastBlocked){this.lastBlocked=reason;this.onTrace('eligibility_blocked',{reason,revision:this.revision,wait_ms:reason==='rate_limit'?Math.max(0,this.minInterval-(now-this.lastStarted)):reason==='debounce'?Math.max(0,this.debounce-(now-this.lastChange)):0});}return false;}this.lastBlocked=null;
+  const revision=this.revision,generation=this.cancelGeneration;this.busy=true;this.superseded=false;this.dispatchTimes.push(now);this.lastStarted=now;this.attempted.add(context);if(this.attempted.size>200)this.attempted.delete(this.attempted.values().next().value);this.onTrace('dispatch',{revision,characters:context.length});this.onState('loading');
+  try{const result=await this.generate(context);this.onTrace('response',{revision,elapsed_ms:this.clock()-now});if(!this.enabled||generation!==this.cancelGeneration){this.onTrace('discard',{revision,reason:'stopped'});return true;}if(revision!==this.revision||context!==this.context){this.superseded=true;this.onTrace('discard',{revision,current_revision:this.revision,reason:'new_completed_segment'});this.onState('stale');return true;}this.onResult(Object.freeze({revision,context,createdAt:this.clock(),stale:false,options:result.options}));this.onTrace('render_accepted',{revision});this.onState('fresh');}
+  catch(e){this.onTrace('request_rejected',{revision,reason:e.message?.includes('нейтральных')?'neutrality_filter':'provider_or_validation'});if(this.enabled&&generation===this.cancelGeneration){if(revision!==this.revision||context!==this.context){this.superseded=true;this.onState('stale');}else this.onState('error',e.message);}}finally{this.busy=false;}return true;
+ }
+}
+export class SpeakerEvidence{
+ constructor(){this.ids=new Map();}
+ label(event){if(event.channel==='own_mic'&&event.evidence==='isolated_channel')return 'Я';if(event.evidence==='isolated_channel'||event.evidence==='final_diarization'){if(typeof event.speaker_id==='string'&&event.speaker_id){if(!this.ids.has(event.speaker_id))this.ids.set(event.speaker_id,`Собеседник ${this.ids.size+1}`);return this.ids.get(event.speaker_id);}}return 'Собеседники';}
+}
+
+export function canRunReplies(state,inflight,stopped=false){return !!(state?.running&&(state.text_ready||inflight)&&state.text_context_allowed&&state.settings?.auto_suggestions&&!stopped);}

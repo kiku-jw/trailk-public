@@ -1,0 +1,9 @@
+// Private local form. No analytics, console, history import or automatic model call.
+export function validateProfile(text){if(typeof text!=='string'||text.length>4000||text.trim().split(/\s+/).filter(Boolean).length>250)throw Error('До 250 слов и 4000 символов.');return text.trim();}
+if(typeof document!=='undefined'){
+ const input=document.getElementById('personal-context'),save=document.getElementById('save-personal-context'),clear=document.getElementById('clear-personal-context'),status=document.getElementById('personal-context-status');let busy=false;
+ async function load(){try{const r=await fetch('/api/personal-context');if(!r.ok)throw Error();const value=await r.json();input.value=value.text;window.calmProfilePresent=!!value.text;status.textContent=value.text?'Сохранён локальный контекст.':'Контекст пуст — прежнее поведение.';}catch{status.textContent='Контекст не загружен. Повторите после восстановления сервера.';}}
+ async function persist(text){if(busy)return;try{text=validateProfile(text);}catch(e){status.textContent=e.message;return;}busy=true;save.disabled=clear.disabled=true;try{const {token}=await fetch('/api/token').then(r=>r.json());const r=await fetch('/api/personal-context',{method:'POST',headers:{'Content-Type':'application/json','X-Pilot-Token':token},body:JSON.stringify({text})});const value=await r.json();if(!r.ok)throw Error(value.error);input.value=value.text;window.calmProfilePresent=!!value.text;status.textContent=value.text?'Сохранено локально. Следующая подсказка учтёт контекст.':'Контекст очищен. Прежнее поведение восстановлено.';window.dispatchEvent(new Event('personal-context-changed'));}catch(e){status.textContent=e.message||'Контекст не сохранён.';}finally{busy=false;save.disabled=clear.disabled=false;}}
+ save.onclick=()=>persist(input.value);clear.onclick=()=>persist('');load();
+ if(window.calmVerification)window.calmProfileVerifyReload=load;
+}
