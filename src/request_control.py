@@ -59,6 +59,9 @@ def request_json(url, body, key, control=None, connection_factory=None):
     else:
         raise ValueError('Invalid provider URL')
 
+    # Connect explicitly so cancellation during DNS/TCP/TLS is checked before HTTP.
+    # If the watcher closes the socket, HTTPConnection.send must not reconnect it.
+    connection.auto_open = 0
     finished = threading.Event()
     response = None
     active_socket = [None]
@@ -84,9 +87,12 @@ def request_json(url, body, key, control=None, connection_factory=None):
         path = parts.path or '/'
         if parts.query:
             path += '?' + parts.query
+        control.check()
+        connection.connect()
+        active_socket[0] = connection.sock
+        control.check()
         connection.request('POST', path, body=body,
                            headers={'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key})
-        active_socket[0] = connection.sock
         control.check()
         response = connection.getresponse()
         control.check()

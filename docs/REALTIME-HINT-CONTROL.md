@@ -41,7 +41,9 @@ cause rejection until a new manually started session resets the queue.
 Provider HTTP has a 30-second overall control deadline from submission, a 10-second
 socket inactivity limit, a 64 KiB response limit, verified TLS, no proxy discovery,
 no redirects and no retries. Cancellation shuts down the active socket to wake
-blocked header/body reads. OS DNS resolution and a credential-helper call are not
+blocked header/body reads. Connect is explicit and cancellation/deadline is checked
+before sending HTTP headers or a body; a closed connection cannot auto-reopen.
+OS DNS resolution and a credential-helper call are not
 interruptible Python operations; those can outlive the control deadline, while the
 job is revoked and cannot display a result. The application never claims cancellation
 undoes an already sent provider request or its billing. Existing reservations are
@@ -73,7 +75,8 @@ word highlighting. Original whitespace, punctuation, numbers and negations are
 preserved. Play is manual; the default pace is 180 words/minute, with 120/240 choices.
 Space pauses and arrow keys or a word click move the position. A new selection or
 edit resets the reader; an automatic hint batch does not replace selected English.
-Stop/page close interrupt reading, and hiding the page pauses without auto-resume.
+Stop in either live or replay mode and page close interrupt reading; hiding the
+page pauses without auto-resume.
 Stale timer callbacks cannot advance a newly selected answer. The highlight uses
 an underline plus the existing light/dark theme colors, without animation.
 
@@ -85,8 +88,10 @@ alignment and a separate overlay window remain future work.
 
 Offline tests cover newest-pending selection, early/late cancellation races, budget
 reservation preservation, actual authenticated local routes, blocked HTTP headers,
-idle/dripping bodies, status/size limits, frontend abort wiring, transcript continuity,
-numeric percentile windows and karaoke DOM/model lifecycle. Existing native PCM
+idle/dripping bodies, cancellation during connect with zero HTTP bytes, closed-socket
+reopen prevention, status/size limits, frontend abort wiring, transcript continuity,
+numeric percentile windows, karaoke DOM/model lifecycle and the actual replay
+session-button Stop path. Existing native PCM
 checks provide deterministic conversion and process-scope evidence only.
 
 GUI, built-app packaging, real Zoom capture, Keychain, microphone, device changes,

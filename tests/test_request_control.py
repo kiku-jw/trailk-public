@@ -1,5 +1,6 @@
 """Loopback fake HTTP tests. No external access or real credentials."""
 import json
+import http.client
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import sys
@@ -9,6 +10,88 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).parents[1] / 'src'))
 from request_control import request_json, RequestControl, RequestCancelled, RequestDeadline, HTTPStatusFailure
+
+
+class ConnectCancellationTests(unittest.TestCase):
+    def test_cancel_or_deadline_during_connect_sends_no_headers_or_body(self):
+        for reason in ('cancel', 'deadline'):
+            with self.subTest(reason=reason):
+                connecting = threading.Event()
+                release = threading.Event()
+                closed_while_connecting = threading.Event()
+                sent = []
+                errors = []
+                values = []
+                clock = [0.]
+                control = RequestControl(overall_seconds=1, clock=lambda: clock[0])
+
+                class FakeSocket:
+                    def sendall(self, data):
+                        sent.append(data)
+                    def shutdown(self, how):
+                        pass
+                    def close(self):
+                        pass
+
+                class DelayedConnect(http.client.HTTPConnection):
+                    def connect(self):
+                        connecting.set()
+                        if not release.wait(2):
+                            raise AssertionError('Fake connect was not released')
+                        self.sock = FakeSocket()
+                    def close(self):
+                        if connecting.is_set() and not release.is_set() and self.sock is None:
+                            closed_while_connecting.set()
+                        super().close()
+                    def getresponse(self):
+                        raise AssertionError('Cancelled request tried to obtain a response')
+
+                def work():
+                    try:
+                        values.append(request_json('http://127.0.0.1:1/v1', b'{"synthetic":true}',
+                                                   'DUMMY-NOT-A-CREDENTIAL', control, DelayedConnect))
+                    except Exception as error:
+                        errors.append(error)
+                thread = threading.Thread(target=work)
+                thread.start()
+                try:
+                    self.assertTrue(connecting.wait(1))
+                    if reason == 'cancel':
+                        control.cancel()
+                    else:
+                        clock[0] = 2.
+                    # Ensure the watcher saw cancellation before DNS/TCP finishes.
+                    self.assertTrue(closed_while_connecting.wait(1))
+                finally:
+                    release.set()
+                    thread.join(1)
+                self.assertFalse(thread.is_alive())
+                self.assertEqual(values, [])  # No late response reaches the caller/UI.
+                self.assertIsInstance(errors[0], RequestCancelled if reason == 'cancel' else RequestDeadline)
+                self.assertEqual(len(sent), 0, 'Cancelled connect must not send HTTP headers or body')
+
+    def test_closed_connection_between_connect_check_and_send_never_reopens(self):
+        control = RequestControl()
+        sent = []
+        connects = []
+        class FakeSocket:
+            def sendall(self, data):
+                sent.append(data)
+            def close(self):
+                pass
+        class ClosedBeforeSend(http.client.HTTPConnection):
+            def connect(self):
+                connects.append(1)
+                self.sock = FakeSocket()
+            def request(self, *args, **kwargs):
+                control.cancel()
+                self.close()  # Deterministic watcher close before the first send.
+                return super().request(*args, **kwargs)
+        with self.assertRaises(RequestCancelled):
+            request_json('http://127.0.0.1:1/v1', b'{"synthetic":true}',
+                         'DUMMY-NOT-A-CREDENTIAL', control, ClosedBeforeSend)
+        self.assertEqual(connects, [1])
+        self.assertEqual(len(sent), 0)
 
 
 class RequestControlTests(unittest.TestCase):
