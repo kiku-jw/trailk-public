@@ -18,7 +18,11 @@ class Socket:
   self.init+=1;return json.dumps({'type':'session.created' if self.init==1 else 'session.updated','session':{'expires_at':1000+self.source.virtual+70}})
  async def send(self,raw):
   event=json.loads(raw)
-  if event['type']=='session.input_audio_buffer.append':self.ids.append(struct.unpack('<i',base64.b64decode(event['audio'])[:4])[0])
+  if event['type']=='session.input_audio_buffer.append':
+   self.ids.append(struct.unpack('<i',base64.b64decode(event['audio'])[:4])[0])
+   # Virtual frames advance 200 ms instantly. Give mock setup callbacks a
+   # deterministic chance to run before advancing the clock again; no real sleep.
+   for _ in range(4):await asyncio.sleep(0)
   if event['type']=='session.close':self.closed.set()
  def __aiter__(self):return self.events()
  async def events(self):
