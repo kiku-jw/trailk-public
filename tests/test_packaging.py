@@ -57,6 +57,10 @@ class PackagingTests(unittest.TestCase):
     self.assertEqual(call('/api/text-mock',{'intent_ru':'Повторите, пожалуйста, немного медленнее.','mode':'suggest'},token)[0],200)
     self.assertEqual(call('/api/state?after=0',host='evil.example')[0],403)
     self.assertEqual(call('/api/text-mock',{},'wrong-token')[0],403)
+    for path in ('/karaoke.js','/karaoke-model.js','/latency.js'):
+     self.assertEqual(call(path)[0],200)
+    self.assertEqual(state['hint_queue']['capacity'],1)
+    self.assertEqual(state['hint_queue']['request_ms']['samples'],0)
     child.stdin.close();child.wait(timeout=5);self.assertEqual(child.returncode,0)
     with self.assertRaises(urllib.error.URLError):urllib.request.urlopen(base+'/api/token',timeout=1)
    finally:

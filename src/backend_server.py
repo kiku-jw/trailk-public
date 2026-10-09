@@ -9,6 +9,8 @@ from capture_runtime import NativeReceiver,PCMConsumer,CaptureConsent,CaptureErr
 from audio_integration import CaptureCloud
 from capture_policy import native_consent
 from connection_settings import ConnectionSettings
+from hint_queue import HintQueue
+from request_control import RequestCancelled,RequestDeadline
 
 from credential_store import KeychainStore
 import os
@@ -29,6 +31,7 @@ def text_reserved():
  except (OSError,ValueError):return 0
 adapter=TextAdapter(KeychainStore(),Ledger(ROOT/'TEXT-BUDGET.json'));audio=CaptureCloud(ROOT,adapter.store);settings=ConnectionSettings(ROOT/'CONNECTION-SETTINGS.json')
 personal_context=PersonalContext(ROOT/'PERSONAL-CONTEXT.json')
+hints=HintQueue()
 def capture_consent():
  if (ROOT/'AUDIO-DO-NOT-PLAY.json').exists():return None
  try:
@@ -67,8 +70,8 @@ class Handler(BaseHTTPRequestHandler):
    except ValueError:return self.send(400,{'error':'Invalid cursor'})
    if monitor:monitor.touch()
    if audio.consumer:audio.consumer.touch()
-   return self.send(200,{'ready':audio.available(),'used':audio.ledger_path().exists(),'running':audio.running,'events':audio.events_since(after),'instance_id':INSTANCE,'text_ready':bool(os.environ.get('CALM_VERIFY_OFFLINE')!='1' and consent and (text_budget.price_known(consent.provider,consent.model) and adapter.ledger.available(consent.budget_limit,text_budget.policy(personal_context_enabled=bool(personal_context.read()['text']))['minimum_reservation_usd']))),'text_budget_exhausted':bool(consent and not (text_budget.price_known(consent.provider,consent.model) and adapter.ledger.available(consent.budget_limit,text_budget.policy(personal_context_enabled=bool(personal_context.read()['text']))['minimum_reservation_usd']))),'text_context_allowed':bool(consent and consent.allow_selected_context),'settings':settings.read(),'configured':settings.ready(),'text_busy':adapter.busy.locked(),'text_budget_policy':text_budget.policy(personal_context_enabled=bool(personal_context.read()['text'])),'text_reserved_usd':text_reserved(), 'estimated_text_usd':text_estimated,'estimated_audio_usd':round((audio.consumer.cloud_bytes if audio.consumer else 0)/48000/60*.034,4),'native_session':audio.native_session(),'capture_approved':bool(capture),'audio_blocked':(ROOT/'AUDIO-DO-NOT-PLAY.json').exists(),'capture_source':capture.source if capture else None,'capture':audio.consumer.snapshot() if audio.consumer else monitor.snapshot() if monitor else None})
-  files={'/':ASSETS/'web/index.html','/app.js':ASSETS/'web/app.js','/t9.js':ASSETS/'web/t9.js','/segments.js':ASSETS/'web/segments.js','/focus-view.js':ASSETS/'web/focus-view.js','/budget-view.js':ASSETS/'web/budget-view.js','/state.js':ASSETS/'web/state.js','/session-control.js':ASSETS/'web/session-control.js','/text-adapter.js':ASSETS/'web/text-adapter.js','/integration.js':ASSETS/'web/integration.js','/style.css':ASSETS/'web/style.css','/replay.json':ASSETS/'replay.json'}
+   return self.send(200,{'ready':audio.available(),'used':audio.ledger_path().exists(),'running':audio.running,'events':audio.events_since(after),'instance_id':INSTANCE,'session_id':audio.current,'hint_queue':hints.snapshot(),'text_ready':bool(os.environ.get('CALM_VERIFY_OFFLINE')!='1' and consent and (text_budget.price_known(consent.provider,consent.model) and adapter.ledger.available(consent.budget_limit,text_budget.policy(personal_context_enabled=bool(personal_context.read()['text']))['minimum_reservation_usd']))),'text_budget_exhausted':bool(consent and not (text_budget.price_known(consent.provider,consent.model) and adapter.ledger.available(consent.budget_limit,text_budget.policy(personal_context_enabled=bool(personal_context.read()['text']))['minimum_reservation_usd']))),'text_context_allowed':bool(consent and consent.allow_selected_context),'settings':settings.read(),'configured':settings.ready(),'text_busy':adapter.busy.locked(),'text_budget_policy':text_budget.policy(personal_context_enabled=bool(personal_context.read()['text'])),'text_reserved_usd':text_reserved(), 'estimated_text_usd':text_estimated,'estimated_audio_usd':round((audio.consumer.cloud_bytes if audio.consumer else 0)/48000/60*.034,4),'native_session':audio.native_session(),'capture_approved':bool(capture),'audio_blocked':(ROOT/'AUDIO-DO-NOT-PLAY.json').exists(),'capture_source':capture.source if capture else None,'capture':audio.consumer.snapshot() if audio.consumer else monitor.snapshot() if monitor else None})
+  files={'/':ASSETS/'web/index.html','/app.js':ASSETS/'web/app.js','/t9.js':ASSETS/'web/t9.js','/segments.js':ASSETS/'web/segments.js','/focus-view.js':ASSETS/'web/focus-view.js','/budget-view.js':ASSETS/'web/budget-view.js','/state.js':ASSETS/'web/state.js','/session-control.js':ASSETS/'web/session-control.js','/text-adapter.js':ASSETS/'web/text-adapter.js','/integration.js':ASSETS/'web/integration.js','/latency.js':ASSETS/'web/latency.js','/karaoke.js':ASSETS/'web/karaoke.js','/karaoke-model.js':ASSETS/'web/karaoke-model.js','/style.css':ASSETS/'web/style.css','/replay.json':ASSETS/'replay.json'}
   file=files.get(self.path)
   if not file:return self.send(404,{'error':'Not found'})
   kind='text/html; charset=utf-8' if file.suffix=='.html' else 'text/javascript; charset=utf-8' if file.suffix=='.js' else 'text/css' if file.suffix=='.css' else 'application/json; charset=utf-8'
@@ -82,7 +85,8 @@ class Handler(BaseHTTPRequestHandler):
    body=json.loads(self.rfile.read(length) or '{}')
    if self.path=='/api/personal-context':
     if set(body)!={'text'}:raise PersonalContextError('Неверные настройки контекста.')
-    return self.send(200,personal_context.save(body['text']))
+    saved=personal_context.save(body['text']);hints.cancel_all()
+    return self.send(200,saved)
    if self.path=='/api/settings':
     if audio.running:raise CaptureError('Сначала остановите сессию для изменения подключения и бюджета.')
     return self.send(200,{'ok':True,'settings':settings.save(body)})
@@ -91,13 +95,19 @@ class Handler(BaseHTTPRequestHandler):
     if receiver and receiver.listener:raise CaptureError('Сначала остановите локальную monitor-проверку.')
     approval=body.get('session_approval')
     if approval is None:approval=settings.grant()
-    audio.start(approval)
+    with audio.lock:
+     audio.start(approval)
+     if audio.session:adapter.ledger=Ledger(ROOT/'session-budgets'/(audio.session['id']+'-text.json'))
+     hints.reset()
     text_estimated=0
-    if audio.session:
-     adapter.ledger=Ledger(ROOT/'session-budgets'/(audio.session['id']+'-text.json'))
     return self.send(200,{'ok':True,'settings':settings.read(),'configured':settings.ready(),'text_busy':adapter.busy.locked(),'text_budget_policy':text_budget.policy(personal_context_enabled=bool(personal_context.read()['text'])),'text_reserved_usd':text_reserved(), 'estimated_text_usd':text_estimated,'estimated_audio_usd':round((audio.consumer.cloud_bytes if audio.consumer else 0)/48000/60*.034,4),'native_session':audio.native_session()})
    if self.path=='/api/stop':
-    audio.stop();return self.send(200,{'ok':True})
+    with audio.lock:hints.cancel_all();audio.stop()
+    return self.send(200,{'ok':True})
+   if self.path=='/api/text/cancel':
+    with audio.lock:
+     if audio.current and body.get('hint_session')==audio.current:hints.cancel(body.get('hint_generation'))
+    return self.send(200,{'ok':True})
    if self.path=='/api/text':
     if os.environ.get('CALM_VERIFY_OFFLINE')=='1':raise TextError('Офлайн-проверка: платный текстовый API выключен.')
     adapter.consent=text_consent()
@@ -107,7 +117,23 @@ class Handler(BaseHTTPRequestHandler):
      global text_estimated
      with lock:
       if request_run==audio.current:text_estimated+=metadata.get('estimated_text_usd') or 0
-    result=adapter.generate(body.get('intent_ru'),body.get('selected_context',''),body.get('mode','translate'),on_usage=observe_usage,conversation=body.get('conversation'),personal_context=profile['text'])
+    def generate(control=None):
+     if control:
+      control.check()
+      with audio.lock:
+       if request_run!=audio.current or not audio.running or text_consent() is None:raise RequestCancelled()
+       if body.get('mode')=='reply' and personal_context.read()['revision']!=profile['revision']:raise RequestCancelled()
+       adapter.consent=text_consent()
+     return adapter.generate(body.get('intent_ru'),body.get('selected_context',''),body.get('mode','translate'),on_usage=observe_usage,conversation=body.get('conversation'),personal_context=profile['text'],control=control)
+    if 'hint_generation' in body:
+     with audio.lock:
+      if body.get('mode')!='reply' or not audio.current or not audio.running or body.get('hint_session')!=audio.current or text_consent() is None:raise RequestCancelled()
+      job=hints.submit(body['hint_generation'],generate)
+     result=job.result()
+     with audio.lock:
+      job.control.check()
+      if request_run!=audio.current or not audio.running or text_consent() is None:raise RequestCancelled()
+    else:result=generate()
     if body.get('mode')=='reply' and personal_context.read()['revision']!=profile['revision']:raise TextError('Контекст обо мне изменён. Прежняя подсказка не показана; автоматического повтора нет.')
     return self.send(200,result)
    if self.path=='/api/text-mock':
@@ -131,10 +157,11 @@ class Handler(BaseHTTPRequestHandler):
     return self.send(200,{'ok':True,'cloud':False,'source':consent.source})
    if self.path=='/api/capture/stop':
     if receiver:receiver.stop()
+    hints.cancel_all()
     audio.stop()
     return self.send(200,{'ok':True})
    raise TextError('Этот слой не запускает старый платный аудиопилот.')
-  except (TextError,CaptureError,PersonalContextError) as error:return self.send(400,{'error':str(error)})
+  except (TextError,CaptureError,PersonalContextError,RequestCancelled,RequestDeadline) as error:return self.send(400,{'error':str(error)})
   except Exception:return self.send(400,{'error':'Локальное действие не завершилось. Секреты/сырой ответ не выводятся.'})
 class Server(ThreadingHTTPServer):
  def handle_error(self,*args):pass

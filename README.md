@@ -53,3 +53,5 @@ Naming research and its limits: docs/NAME-RESEARCH.md.
 Historical 1.3.4 notes: camera-centered dark/light interface, completed-segment freshness and approved estimated text reserve. See [latest reply context](docs/LATEST-REPLY-CONTEXT.md), [freshness fixes](docs/FRESHNESS-FIXES.md), [latency evidence](docs/LATENCY.md), [camera UI](docs/CAMERA-UI.md) and [budget policy](docs/MONETARY-UX.md).
 
 [Real-world latency research and offline scenario matrix](docs/REAL-WORLD-LATENCY.md).
+
+[Automatic hint queue, cancellation, latency metrics and karaoke reading aid](docs/REALTIME-HINT-CONTROL.md). This branch keeps production LLM output as validated JSON; source-language STT, speech alignment and diarization remain future work.
