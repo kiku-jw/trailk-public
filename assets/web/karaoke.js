@@ -1,0 +1,12 @@
+import {KaraokeReader} from './karaoke-model.js';
+const $=id=>document.getElementById(id),root=$('karaoke'),text=$('karaoke-text'),reader=new KaraokeReader();let timer=null,identity=0,spans=[];
+function stopTimer(){if(timer!==null)clearInterval(timer);timer=null;}
+function render(){root.hidden=!reader.words.length;spans.forEach((span,index)=>span.classList.toggle('is-current',index===reader.index));$('karaoke-play').disabled=!reader.words.length;$('karaoke-play').textContent=reader.state==='playing'?'Пауза':'Подсветить';$('karaoke-restart').disabled=!reader.words.length;const position=reader.words.length?`${reader.index+1} / ${reader.words.length}`:'Выберите ответ, чтобы читать по словам.';$('karaoke-position').textContent=reader.state==='interrupted'?`На паузе · ${position}`:position;}
+function prepare(){stopTimer();reader.prepare($('english').value,++identity);spans=[];text.replaceChildren();let cursor=0;for(const word of reader.words){text.append(document.createTextNode(reader.text.slice(cursor,word.start)));const span=document.createElement('span');span.className='karaoke-word';span.textContent=word.text;span.onclick=()=>{stopTimer();reader.seek(spans.indexOf(span));render();};spans.push(span);text.append(span);cursor=word.end;}text.append(document.createTextNode(reader.text.slice(cursor)));render();}
+$('karaoke-play').onclick=()=>{if(reader.state==='playing'){reader.pause();stopTimer();render();return;}if(reader.play()){stopTimer();const generation=reader.generation;timer=setInterval(()=>{if(reader.tick(generation))render();if(reader.state!=='playing')stopTimer();},50);render();}};
+$('karaoke-restart').onclick=()=>{stopTimer();reader.seek(0);render();};$('karaoke-pace').onchange=()=>reader.pace(Number($('karaoke-pace').value));
+root.addEventListener('keydown',event=>{if(event.target!==root||event.repeat)return;if(event.key==='ArrowLeft'||event.key==='ArrowRight'){event.preventDefault();stopTimer();reader.seek(reader.index+(event.key==='ArrowLeft'?-1:1));render();}if(event.key===' '){event.preventDefault();$('karaoke-play').click();}});
+window.addEventListener('selected-reply',prepare);$('english').addEventListener('input',prepare);
+for(const name of ['session-stop','pagehide'])window.addEventListener(name,()=>{stopTimer();reader.interrupt();render();});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){stopTimer();reader.pause();render();}});
+prepare();

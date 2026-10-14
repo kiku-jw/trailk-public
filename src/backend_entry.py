@@ -29,6 +29,7 @@ def main():
     def stop(*_):
         if not stopped.is_set():
             stopped.set()
+            service.hints.close()
             service.audio.stop()
             if service.receiver: service.receiver.stop()
             threading.Thread(target=server.shutdown,daemon=True).start()
@@ -41,6 +42,7 @@ def main():
     print(json.dumps({'ready':True,'port':server.server_port,'pid':os.getpid()}),flush=True)
     try: server.serve_forever(poll_interval=.1)
     finally:
+        service.hints.close()
         service.audio.stop()
         if service.receiver: service.receiver.stop()
         server.server_close()
