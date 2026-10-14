@@ -1,6 +1,6 @@
 # Offline application QA, 2026-10-14
 
-The source based on PR #1 a82b6a0 was rebuilt into a fresh, uninstalled macOS app.
+The runtime source at PR #1 de38ebf was rebuilt into a fresh, uninstalled macOS app.
 The declared pinned build requirements installed in an isolated Python environment.
 The frozen backend self-test confirmed Python 3.14.6, verified TLS roots,
 websockets 15.0.1 and bundled web assets. Native helper/main compilation and strict
@@ -30,6 +30,19 @@ was a tooling restriction rather than a source asset defect. No denial was bypas
   The in-memory selected answer clears on reload, as expected.
 - Parent-pipe EOF stops the frozen child. A deliberate new child starts with gates
   and the cleared profile preserved, then also exits on EOF.
+- Actual AppKit/WKWebView verification passed 58 checks on the first run and 59
+  on a complete process relaunch. Native Start/Stop, synthetic profile and reader
+  state, light/dark/narrow layouts, Close/reopen and deliberate child failure with
+  manual recovery passed. Screenshots of the owned app window were inspected.
+- An accessibility check in the actual WK window started and paused karaoke;
+  button state changed correctly and selected English stayed unchanged.
+
+The native GUI run used a metadata-only QA copy of the already built app, with a
+distinct bundle identifier to isolate window preferences. Application code was
+not rebuilt or changed for this copy. Existing screen/accessibility permissions
+were checked without requesting new permissions. The verification-only preference
+suite was backed up and restored exactly; the production profile was not used.
+All owned QA app/backend/browser processes exited after the checks.
 
 The application runtime used a new QA-only data root, a nonexistent credential
 bridge and CALM_VERIFY_OFFLINE=1. Browser requests were limited to the localhost
@@ -38,13 +51,11 @@ probe, user call, capture, microphone or private audio was used. Offline output 
 not translation-quality evidence. QA profiles/logs/screenshots are excluded from
 Git publication.
 
-## Remaining acceptance gate
+## Remaining acceptance scope
 
-Chromium/DOM checks do not prove AppKit/WKWebView behavior. A coordinated Mac GUI
-window with no competing user activity is still required for the actual native
-verification lifecycle, camera layout/reader, Stop, Close and recovery. The current
-native verification command opens a real window; it was not run during the shared
-GUI restriction. No installation, release or merge was performed.
+The offline native application gate passed. This evidence covers synthetic replay,
+UI and process lifecycle; it does not establish real-call translation quality or
+device behavior. No installation, release or merge was performed.
 
 A real Zoom smoke of 3–5 minutes needs distinct authorization and a permitted
 source. It was not attempted. Long calls, device changes, source-language STT,

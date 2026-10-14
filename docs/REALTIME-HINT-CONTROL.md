@@ -98,8 +98,11 @@ numeric percentile windows, karaoke DOM/model lifecycle and the actual replay
 session-button Stop path. Existing native PCM
 checks provide deterministic conversion and process-scope evidence only.
 
-GUI, built-app packaging, real Zoom capture, Keychain, microphone, device changes,
-long calls and visual camera position were not exercised for this branch. Source STT,
-production streaming LLM, reliable diarization, speech-aligned karaoke and true
-speech-end-to-display/TTFT measurements remain unimplemented. The draft PR is not
-a tested release build.
+Fresh frozen packaging and the offline AppKit/WKWebView lifecycle now pass, along
+with actual native karaoke Play/Pause and inspected light/dark/narrow camera
+layouts. See OFFLINE-APP-QA.md for the isolated GUI setup and evidence scope.
+Real Zoom capture, Keychain, microphone, device changes and long calls were not
+exercised. Source STT, production streaming LLM, reliable diarization,
+speech-aligned karaoke and true speech-end-to-display/TTFT measurements remain
+unimplemented. The draft PR has an ad-hoc development build, not a notarized or
+installed release.
