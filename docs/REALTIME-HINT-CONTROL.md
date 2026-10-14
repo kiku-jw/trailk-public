@@ -30,6 +30,10 @@ Stop, capture stop, profile changes and parent shutdown revoke automatic hints.
 The run, consent and profile revision are checked before queued work and again
 before accepting its result.
 
+A manual replay Stop stays latched across scheduler ticks until explicit Start or
+a newly loaded Replay fixture. Natural end permits its final stabilized hint.
+Stopped replay keeps the selected English and stopped status without new mock cards.
+
 The browser aborts its fetch when context changes, automatic suggestions are
 disabled, Stop occurs or the page closes. It also sends a metadata-only cancellation
 request to the local backend. A bounded replacement remains subject to the existing
